@@ -1,0 +1,14 @@
+﻿<UserControl x:Class="IntelloDeskClient.Views.StartView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:IntelloDeskClient.Views"
+             mc:Ignorable="d" 
+             d:DesignHeight="450" d:DesignWidth="800">
+    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Width="300">
+        <Button Content="Dokumenty przyjęcia" Command="{Binding PokazDokumentyCommand}" Margin="10" Height="60"/>
+        <Button Content="Kontrahenci" Command="{Binding PokazKontrahenciCommand}" Margin="10" Height="60"/>
+        <Button Content="Towary" Command="{Binding PokazTowaryCommand}" Margin="10" Height="60"/>
+    </StackPanel>
+</UserControl>
