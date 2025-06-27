@@ -1,0 +1,61 @@
+﻿<UserControl x:Class="IntelloDeskClient.Views.KontrahenciListView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             d:DesignHeight="450" d:DesignWidth="800">
+
+    <Grid Margin="20">
+        <StackPanel>
+
+            <!-- Tytuł -->
+            <TextBlock Text="Kontrahenci"
+                       FontSize="20" FontWeight="Bold"
+                       Margin="0 0 0 10"/>
+
+            <!-- Panel dodawania towaru -->
+            <StackPanel Orientation="Horizontal" Margin="0 0 0 10">
+                <Button Content="Stworz Kontrahenta +"
+                        Background="#97D97E"
+                        Command="{Binding CreatekontrahentrViewCommand}"
+                Padding="10 2.5"
+                        VerticalAlignment="Bottom" />
+            </StackPanel>
+
+            <!-- Tabela pozycji -->
+            <DataGrid ItemsSource="{Binding Kontrahenci}"
+                      SelectedItem="{Binding WybranaPozycja}"
+                      AutoGenerateColumns="False"
+                      CanUserAddRows="False"
+                      IsReadOnly="True"
+                      AlternatingRowBackground="#F5F5F5"
+                      Padding="5">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Id" Binding="{Binding Id}" Width="50" />
+                    <DataGridTextColumn Header="Symbol" Binding="{Binding Symbol}" Width="150" />
+                    <DataGridTextColumn Header="Jednostka" Binding="{Binding Nazwa}" Width="*" />
+
+                    <DataGridTemplateColumn Width="100" Header="Akcje">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Button Content="Usuń pozycje" Background="#EC9C9D"
+                                Command="{Binding DataContext.UsunPozycjeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                CommandParameter="{Binding}" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+
+        </StackPanel>
+
+        <!-- Powrót -->
+        <Button Content="← Powrót"
+                Command="{Binding PowrotCommand}"
+                Margin="20"
+                Padding="10 5"
+                VerticalAlignment="Bottom"
+                HorizontalAlignment="Right"/>
+    </Grid>
+</UserControl>
