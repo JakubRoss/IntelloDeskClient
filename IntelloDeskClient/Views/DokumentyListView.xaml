@@ -1,0 +1,63 @@
+﻿<UserControl x:Class="IntelloDeskClient.Views.DokumentyListView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:IntelloDeskClient.Views"
+             mc:Ignorable="d" 
+             d:DesignHeight="450" d:DesignWidth="800">
+    <Grid Margin="20">
+        <StackPanel>
+
+            <!-- Tytuł -->
+            <TextBlock Text="Dokuemnty Przyjecia"
+                       FontSize="20" FontWeight="Bold"
+                       Margin="0 0 0 10"/>
+
+            <!-- Panel dodawania towaru -->
+            <StackPanel Orientation="Horizontal" Margin="0 0 0 10">
+                <Button Content="Stworz Dokument +"
+                        Background="#97D97E"
+                        Command="{Binding CreateDokumentViewCommand}"
+                Padding="10 2.5"
+                        VerticalAlignment="Bottom" />
+            </StackPanel>
+
+            <!-- Tabela pozycji -->
+            <DataGrid ItemsSource="{Binding Dokumenty}" AutoGenerateColumns="False"
+                 SelectedItem="{Binding SelectedDokument}" Padding="5">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Width="150" Header="Data Przyjecia" Binding="{Binding Data}" />
+                    <DataGridTextColumn Width="200" Header="Symbol" Binding="{Binding Symbol}" />
+                    <DataGridTextColumn Width="*" Header="Kontrahent" Binding="{Binding Kontrahent.Nazwa}" />
+                    <DataGridTemplateColumn Width="150" Header="Akcje">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Content="Szczegóły" Padding="5" Margin="5"
+                                        Command="{Binding DataContext.PokazPozycjeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}" />
+
+                                    <Button Content="Usuń" Padding="5" Margin="0 5"
+                                        Command="{Binding DataContext.UsunDokumentCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+
+                </DataGrid.Columns>
+            </DataGrid>
+
+        </StackPanel>
+
+        <!-- Powrót -->
+        <Button Content="← Powrót"
+                Command="{Binding PowrotCommand}"
+                Margin="20"
+                Padding="10 5"
+                VerticalAlignment="Bottom"
+                HorizontalAlignment="Right"/>
+    </Grid>
+</UserControl>
