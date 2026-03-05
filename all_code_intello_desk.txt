@@ -1,0 +1,964 @@
+﻿using System.Configuration;
+using System.Data;
+using System.Windows;
+
+namespace IntelloDeskClient
+{
+    /// <summary>
+    /// Interaction logic for App.xaml
+    /// </summary>
+    public partial class App : Application
+    {
+    }
+
+}
+using System.Windows;
+
+[assembly: ThemeInfo(
+    ResourceDictionaryLocation.None,            //where theme specific resource dictionaries are located
+                                                //(used if a resource is not found in the page,
+                                                // or application resource dictionaries)
+    ResourceDictionaryLocation.SourceAssembly   //where the generic resource dictionary is located
+                                                //(used if a resource is not found in the page,
+                                                // app, or any theme specific resource dictionaries)
+)]
+using IntelloDeskClient.ViewModels;
+using System.Windows;
+
+namespace IntelloDeskClient
+{
+    /// <summary>
+    /// Interaction logic for MainWindow.xaml
+    /// </summary>
+    public partial class MainWindow : Window
+    {
+        public MainWindow()
+        {
+            InitializeComponent();
+            DataContext = new MainViewModel();
+        }
+    }
+}
+using System.ComponentModel.DataAnnotations;
+
+namespace IntelloDeskClient.DTO
+{
+    public class KontrahentDto
+    {
+        public int Id { get; set; }
+        public string Symbol { get; set; } = string.Empty;
+        public string Nazwa { get; set; } = string.Empty;
+
+    }
+    public class CreateKontrahentDto
+    {
+        public string Symbol { get; set; } = string.Empty;
+        public string Nazwa { get; set; } = string.Empty;
+    }
+    public class CreateTowarDto
+    {
+        public string Nazwa { get; set; } = string.Empty;
+        public string JednostkaMiary { get; set; } = string.Empty;
+    }
+    public class TowarDto
+    {
+        public int Id { get; set; }
+        public string NazwaTowaru { get; set; } = string.Empty;
+        public string JednostkaMiary { get; set; } = string.Empty ;
+    }
+
+    public class PozycjaDokumentuDto
+    {
+        public int Id { get; set; }
+        public int TowarId { get; set; }
+        public int DokumentPrzyjeciaId { get; set; }
+        public string NazwaTowaru { get; set; } = string.Empty;
+        public string JednostkaMiary { get; set; } = string.Empty;
+        public decimal Ilosc { get; set; }
+    }
+
+    public class DokumentPrzyjeciaDto
+    {
+        public int Id { get; set; }
+        public DateTime Data { get; set; }
+        public string Symbol { get; set; }
+        public KontrahentDto Kontrahent { get; set; }
+        public List<PozycjaDokumentuDto> Pozycje { get; set; } = new List<PozycjaDokumentuDto>();
+    }
+
+    public class CreateDokumentPrzyjeciaDto
+    {
+
+        public string Symbol { get; set; }
+        public int KontrahentId { get; set; }
+        public int Ilosc { get; set; }
+        public int TowarId { get; set; }
+    }
+    public class CreatePozycjaDokumentuDto
+    {
+        public int TowarId { get; set; }
+        public decimal Ilosc { get; set; }
+    }
+}
+using IntelloDeskClient.DTO;
+using System.Net.Http;
+using System.Net.Http.Json;
+
+namespace IntelloDeskClient.Services
+{
+    class ApiService
+    {
+        private readonly HttpClient _http;
+
+        public ApiService()
+        {
+            _http = new HttpClient();
+            _http.BaseAddress = new Uri("https://qubity.azurewebsites.net/api/");
+        }
+
+
+        // Dokumenty
+        public async Task<List<DokumentPrzyjeciaDto>?> GetDokumentyAsync() =>
+            await _http.GetFromJsonAsync<List<DokumentPrzyjeciaDto>>("dokumenty");
+
+        public async Task CreateDokumentAsync(CreateDokumentPrzyjeciaDto dto)
+        {
+            var res = await _http.PostAsJsonAsync("dokumenty", dto);
+            res.EnsureSuccessStatusCode();
+        }
+
+        public async Task DeleteDokumentAsync(int id) =>
+            await _http.DeleteAsync($"dokumenty/{id}");
+
+        // Kontrahenci
+        public async Task<List<KontrahentDto>> GetKontrahenciAsync() =>
+            await _http.GetFromJsonAsync<List<KontrahentDto>>("kontrahent");
+
+        public async Task AddKontrahentAsync(CreateKontrahentDto dto)
+        {
+            if (dto is null)
+                throw new ArgumentNullException(nameof(dto), "DTO nie może być null.");
+
+            var response = await _http.PostAsJsonAsync("kontrahent", dto);
+
+            response.EnsureSuccessStatusCode();
+        }
+
+        public async Task DeleteKontrahentAsync(int id) =>
+            await _http.DeleteAsync($"kontrahent/{id}");
+
+        // Towary (do wyboru w Pozycjach)
+        public async Task<List<TowarDto>> GetTowaryAsync() =>
+            await _http.GetFromJsonAsync<List<TowarDto>>("towary");
+
+        public async Task AddTowarAsync(CreateTowarDto dto) =>
+            await _http.PostAsJsonAsync("towary",dto);
+
+        public async Task DeleteTowarAsync(int id) =>
+            await _http.DeleteAsync($"towary/{id}");
+
+        // Pozycje dokumentu
+        public async Task AddPozycjaAsync(int dokumentId, CreatePozycjaDokumentuDto dto) =>
+            await _http.PostAsJsonAsync($"dokumenty/{dokumentId}/pozycje", dto);
+
+        public async Task DeletePozycjaAsync(int dokumentId, int pozycjaId) =>
+            await _http.DeleteAsync($"dokumenty/{dokumentId}/pozycje/{pozycjaId}");
+    }
+}
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using IntelloDeskClient.DTO;
+using IntelloDeskClient.Services;
+using IntelloDeskClient.Views;
+using System.Collections.ObjectModel;
+using System.Threading.Tasks;
+
+namespace IntelloDeskClient.ViewModels
+{
+    public partial class DokumentyListViewModel : ObservableObject
+    {
+        private readonly MainViewModel _main;
+        private readonly ApiService _api = new();
+        public IRelayCommand PokazPozycjeCommand { get; }
+        public IRelayCommand UsunDokumentCommand { get; }
+
+        public DokumentyListViewModel(MainViewModel main)
+        {
+            _main = main;
+            _ = ZaladujAsync();
+
+            //zbadaj sprawe
+            PokazPozycjeCommand = new RelayCommand<object>(param =>
+            {
+                if (param is DokumentPrzyjeciaDto dokument)
+                {
+                    PokazPozycje(dokument);
+                }
+            });
+
+            UsunDokumentCommand = new RelayCommand<object>(param =>
+            {
+                if (param is DokumentPrzyjeciaDto dokument)
+                {
+                    UsunDokument(dokument.Id);
+                }
+            });
+
+        }
+
+        [ObservableProperty]
+        private ObservableCollection<DokumentPrzyjeciaDto> dokumenty = new();
+
+        [ObservableProperty]
+        private DokumentPrzyjeciaDto? selectedDokument;
+
+        [RelayCommand]
+        private async Task ZaladujAsync()
+        {
+            var lista = await _api.GetDokumentyAsync();
+            Dokumenty = new ObservableCollection<DokumentPrzyjeciaDto>(lista);
+        }
+
+        [RelayCommand]
+        private void Powrot()
+        {
+            _main.BiezacyWidok = new StartView
+            {
+                DataContext = new StartViewModel(_main)
+            };
+        }
+
+        [RelayCommand]
+        private void CreateDokumentView()
+        {
+            _main.BiezacyWidok = new NowePrzyjecieView
+            {
+                DataContext = new NowePrzyjecieViewModel(_main)
+            };
+        }
+
+        private void PokazPozycje(DokumentPrzyjeciaDto dokument)
+        {
+            _main.BiezacyWidok = new PozycjaView
+            {
+                DataContext = new PozycjeViewModel(dokument.Pozycje, _main, dokument.Id)
+            };
+        }
+        private async Task UsunDokument(int id)
+        {
+            await _api.DeleteDokumentAsync(id);
+            await ZaladujAsync();
+        }
+    }
+}
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using IntelloDeskClient.DTO;
+using IntelloDeskClient.Services;
+using IntelloDeskClient.ViewModels;
+using IntelloDeskClient.Views;
+using System.Collections.ObjectModel;
+
+public partial class KontrahenciListViewModel : ObservableObject
+{
+    private readonly ApiService _api = new();
+    private readonly MainViewModel _main;
+
+    public KontrahenciListViewModel(MainViewModel main)
+    {
+        _main = main;
+        _ = ZaladujKontrahentowAsync();
+
+        UsunPozycjeCommand = new RelayCommand<object>(param =>
+        {
+            if (param is KontrahentDto wybranyKontrahentDto)
+            {
+                UsunPozycje(wybranyKontrahentDto);
+            }
+        });
+    }
+
+    [ObservableProperty]
+    private ObservableCollection<KontrahentDto> kontrahenci = new();
+
+    public IRelayCommand UsunPozycjeCommand { get; }
+    [ObservableProperty]
+    private KontrahentDto? wybranaPozycja;
+
+    [ObservableProperty]
+    private KontrahentDto? wybranyKontrahent;
+
+    [RelayCommand]
+    private async Task ZaladujKontrahentowAsync()
+    {
+        var lista = await _api.GetKontrahenciAsync();
+        Kontrahenci = new ObservableCollection<KontrahentDto>(lista);
+    }
+
+    [RelayCommand]
+    private void Powrot()
+    {
+        _main.BiezacyWidok = new StartView
+        {
+            DataContext = new StartViewModel(_main)
+        };
+    }
+
+    [RelayCommand]
+    private void CreatekontrahentrView()
+    {
+        _main.BiezacyWidok = new NowyKontrahentView
+        {
+            DataContext = new NowyKontrahentViewModel(_main)
+        };
+    }
+
+    private async Task UsunPozycje(KontrahentDto kontrahentDto)
+    {
+        if (kontrahentDto == null) return;
+
+        await _api.DeleteKontrahentAsync(kontrahentDto.Id);
+
+        Kontrahenci.Remove(kontrahentDto);
+    }
+}
+using CommunityToolkit.Mvvm.ComponentModel;
+using IntelloDeskClient.DTO;
+using IntelloDeskClient.Views;
+
+namespace IntelloDeskClient.ViewModels
+{
+    public partial class MainViewModel : ObservableObject
+    {
+        [ObservableProperty] 
+        private object? biezacyWidok;
+
+        public MainViewModel()
+        {
+            PokazStart();
+        }
+
+        public void PokazStart()
+        {
+            BiezacyWidok = new StartView
+            {
+                DataContext = new StartViewModel(this)
+            };
+        }
+
+        public void PokazDokumenty()
+        {
+            BiezacyWidok = new DokumentyListView
+            {
+                DataContext = new DokumentyListViewModel(this)
+            };
+        }
+
+    }
+}
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using IntelloDeskClient.DTO;
+using IntelloDeskClient.Services;
+using IntelloDeskClient.ViewModels;
+using IntelloDeskClient.Views;
+using System.Collections.ObjectModel;
+
+public partial class NowePrzyjecieViewModel : ObservableObject
+{
+    private readonly ApiService _api = new();
+    private readonly MainViewModel _main;
+
+    public NowePrzyjecieViewModel(MainViewModel main)
+    {
+        _main = main;
+        _ = ZaladujDaneAsync();
+    }
+
+    [ObservableProperty]
+    private string symbol = string.Empty;
+
+    [ObservableProperty]
+    private int ilosc = 1;
+
+    [ObservableProperty]
+    private TowarDto? wybranyTowar;
+
+    [ObservableProperty]
+    private KontrahentDto? wybranyKontrahent;
+
+    [ObservableProperty]
+    private ObservableCollection<TowarDto> towary = new();
+
+    [ObservableProperty]
+    private ObservableCollection<KontrahentDto> kontrahenci = new();
+
+    [RelayCommand]
+    private async Task ZaladujDaneAsync()
+    {
+        var towar = await _api.GetTowaryAsync();
+        var kontrahenci = await _api.GetKontrahenciAsync();
+
+        Towary = new ObservableCollection<TowarDto>(towar);
+        Kontrahenci = new ObservableCollection<KontrahentDto>(kontrahenci);
+    }
+
+    [RelayCommand]
+    private async Task Zapisz()
+    {
+        if (WybranyTowar == null || WybranyKontrahent == null || Ilosc <1)
+            return;
+
+        var dto = new CreateDokumentPrzyjeciaDto
+        {
+            Symbol = Symbol,
+            TowarId = WybranyTowar.Id,
+            KontrahentId = WybranyKontrahent.Id,
+            Ilosc = Ilosc
+        };
+
+        await _api.CreateDokumentAsync(dto);
+        Anuluj();
+    }
+
+    [RelayCommand]
+    private void Anuluj()
+    {
+        _main.BiezacyWidok = new DokumentyListView
+        {
+            DataContext = new DokumentyListViewModel(_main)
+        };
+    }
+}
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace IntelloDeskClient.ViewModels
+{
+    using CommunityToolkit.Mvvm.ComponentModel;
+    using CommunityToolkit.Mvvm.Input;
+    using IntelloDeskClient.DTO;
+    using IntelloDeskClient.Services;
+    using IntelloDeskClient.Views;
+
+    public partial class NowyKontrahentViewModel : ObservableObject
+    {
+        private readonly ApiService _api = new();
+        private readonly MainViewModel _main;
+
+        [ObservableProperty]
+        private string? symbol;
+
+        [ObservableProperty]
+        private string? nazwa;
+        public NowyKontrahentViewModel(MainViewModel main)
+        {
+            _main = main;
+        }
+
+        [RelayCommand]
+        private async Task AddKontrahent()
+        {
+            if (string.IsNullOrWhiteSpace(symbol) || string.IsNullOrWhiteSpace(nazwa))
+            {
+                Anuluj();
+                return;
+            }
+            var dto = new CreateKontrahentDto
+            {
+                Symbol = Symbol.Trim(),
+                Nazwa = Nazwa.Trim()
+            };
+
+            await _api.AddKontrahentAsync(dto);
+            Anuluj();
+        }
+
+        [RelayCommand]
+        private void Anuluj()
+        {
+            _main.BiezacyWidok = new KontrahenciListView
+            {
+                DataContext = new KontrahenciListViewModel(_main)
+            };
+        }
+    }
+
+}
+namespace IntelloDeskClient.ViewModels
+{
+    using CommunityToolkit.Mvvm.ComponentModel;
+    using CommunityToolkit.Mvvm.Input;
+    using IntelloDeskClient.DTO;
+    using IntelloDeskClient.Services;
+    using IntelloDeskClient.Views;
+
+    public partial class NowyTowarViewModel : ObservableObject
+    {
+        private readonly ApiService _api = new();
+        private readonly MainViewModel _main;
+
+        public NowyTowarViewModel(MainViewModel main)
+        {
+            _main = main;
+        }
+
+        [ObservableProperty]
+        private string nazwa = string.Empty;
+
+        [ObservableProperty]
+        private string jednostkaMiary = string.Empty;
+
+        [RelayCommand]
+        private async Task Zapisz()
+        {
+            if (string.IsNullOrWhiteSpace(Nazwa) || string.IsNullOrWhiteSpace(JednostkaMiary))
+                return;
+
+            var dto = new CreateTowarDto
+            {
+                Nazwa = Nazwa.Trim(),
+                JednostkaMiary = JednostkaMiary.Trim()
+            };
+
+            await _api.AddTowarAsync(dto);
+            Anuluj();
+        }
+
+        [RelayCommand]
+        private void Anuluj()
+        {
+            _main.BiezacyWidok = new StartView
+            {
+                DataContext = new StartViewModel(_main)
+            };
+        }
+    }
+
+}
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using IntelloDeskClient.DTO;
+using IntelloDeskClient.Services;
+using IntelloDeskClient.Views;
+using System.Collections.ObjectModel;
+
+namespace IntelloDeskClient.ViewModels
+{
+    public partial class PozycjeViewModel : ObservableObject
+    {
+        public ObservableCollection<PozycjaDokumentuDto> Pozycje { get; }
+        public ObservableCollection<TowarDto> Towary { get; } = new();
+
+        private readonly ApiService _api = new();
+
+        private readonly MainViewModel _main;
+        private readonly int _dokumentId;
+
+        public TowarDto? WybranyTowar { get; set; }
+        public int NowaIlosc { get; set; }
+
+        public IRelayCommand UsunPozycjeCommand { get; }
+        [ObservableProperty]
+        private PozycjaDokumentuDto? wybranaPozycja;
+
+        public PozycjeViewModel(List<PozycjaDokumentuDto> pozycje, MainViewModel main, int dokumentId)
+        {
+            _main = main;
+            _dokumentId = dokumentId;
+            Pozycje = new ObservableCollection<PozycjaDokumentuDto>(pozycje);
+
+            UsunPozycjeCommand = new RelayCommand<object>(param =>
+            {
+                if (param is PozycjaDokumentuDto pozycjaDokumentuDto)
+                {
+                    UsunPozycje(pozycjaDokumentuDto);
+                }
+            });
+
+            _ = ZaladujTowaryAsync();
+        }
+
+
+        [RelayCommand]
+        private void Powrot() => _main.PokazDokumenty();
+
+        [RelayCommand]
+        private async Task DodajTowar()
+        {
+            if (WybranyTowar == null || NowaIlosc < 1)
+                return;
+
+            var createPozycjaDokumentuDto = new CreatePozycjaDokumentuDto
+            {
+                TowarId = WybranyTowar.Id,
+                Ilosc = NowaIlosc
+            };
+
+            await _api.AddPozycjaAsync(_dokumentId, createPozycjaDokumentuDto);
+
+            Pozycje.Add(new PozycjaDokumentuDto
+            {
+                TowarId = WybranyTowar.Id,
+                NazwaTowaru = WybranyTowar.NazwaTowaru,
+                JednostkaMiary = WybranyTowar.JednostkaMiary,
+                Ilosc = NowaIlosc
+            });
+
+            // Reset formularza
+            WybranyTowar = null;
+            NowaIlosc = 0;
+            OnPropertyChanged(nameof(WybranyTowar));
+            OnPropertyChanged(nameof(NowaIlosc));
+        }
+        private async Task ZaladujTowaryAsync()
+        {
+            var lista = await _api.GetTowaryAsync();
+            Towary.Clear();
+            foreach (var towar in lista)
+                Towary.Add(towar);
+        }
+
+        private async Task UsunPozycje(PozycjaDokumentuDto pozycjaDokumentuDto)
+        {
+            if (pozycjaDokumentuDto == null) return;
+
+            await _api.DeletePozycjaAsync(_dokumentId, pozycjaDokumentuDto.Id);
+
+            Pozycje.Remove( pozycjaDokumentuDto );
+        }
+    }
+
+
+}
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using IntelloDeskClient.Views;
+
+namespace IntelloDeskClient.ViewModels
+{
+    public partial class StartViewModel : ObservableObject
+    {
+        private readonly MainViewModel _main;
+
+        public StartViewModel(MainViewModel main)
+        {
+            _main = main;
+        }
+
+        [RelayCommand]
+        private void PokazDokumenty()
+        {
+            _main.BiezacyWidok = new DokumentyListView
+            {
+                DataContext = new DokumentyListViewModel(_main)
+            };
+        }
+
+        [RelayCommand]
+        private void PokazKontrahenci()
+        {
+            _main.BiezacyWidok = new KontrahenciListView
+            {
+                DataContext = new KontrahenciListViewModel(_main)
+            };
+        }
+
+        [RelayCommand]
+        private void PokazTowary()
+        {
+            _main.BiezacyWidok = new TowaryListView
+            {
+                DataContext = new TowaryListViewModel(_main)
+            };
+        }
+    }
+}
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using IntelloDeskClient.DTO;
+using IntelloDeskClient.Services;
+using IntelloDeskClient.Views;
+using System.Collections.ObjectModel;
+
+namespace IntelloDeskClient.ViewModels
+{
+    public partial class TowaryListViewModel : ObservableObject
+    {
+        private readonly ApiService _api = new();
+        private readonly MainViewModel _main;
+
+        public TowaryListViewModel(MainViewModel main)
+        {
+            _main = main;
+            _ = ZaladujTowaryAsync();
+
+            UsunPozycjeCommand = new RelayCommand<object>(param =>
+            {
+                if (param is TowarDto wybranyKontrahentDto)
+                {
+                    UsunPozycje(wybranyKontrahentDto);
+                }
+            });
+        }
+
+        [ObservableProperty]
+        private ObservableCollection<TowarDto> towar = new();
+
+        public IRelayCommand UsunPozycjeCommand { get; }
+        [ObservableProperty]
+        private KontrahentDto? wybranaPozycja;
+
+        [ObservableProperty]
+        private KontrahentDto? wybranyTowar;
+
+        [RelayCommand]
+        private async Task ZaladujTowaryAsync()
+        {
+            var lista = await _api.GetTowaryAsync();
+            Towar = new ObservableCollection<TowarDto>(lista);
+        }
+
+        [RelayCommand]
+        private void Powrot()
+        {
+            _main.BiezacyWidok = new StartView
+            {
+                DataContext = new StartViewModel(_main)
+            };
+        }
+
+        [RelayCommand]
+        private void CreateTowarView()
+        {
+            _main.BiezacyWidok = new NowyTowarView
+            {
+                DataContext = new NowyTowarViewModel(_main)
+            };
+        }
+
+        private async Task UsunPozycje(TowarDto towarDto)
+        {
+            if (towarDto == null) return;
+
+            await _api.DeleteTowarAsync(towarDto.Id);
+
+            Towar.Remove(towarDto);
+        }
+    }
+}
+using IntelloDeskClient.ViewModels;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Documents;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Navigation;
+using System.Windows.Shapes;
+
+namespace IntelloDeskClient.Views
+{
+    /// <summary>
+    /// Interaction logic for DokumentyListView.xaml
+    /// </summary>
+    public partial class DokumentyListView : UserControl
+    {
+        public DokumentyListView()
+        {
+            InitializeComponent();
+        }
+    }
+}
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Documents;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Navigation;
+using System.Windows.Shapes;
+
+namespace IntelloDeskClient.Views
+{
+    /// <summary>
+    /// Interaction logic for KontrahenciView.xaml
+    /// </summary>
+    public partial class KontrahenciListView : UserControl
+    {
+        public KontrahenciListView()
+        {
+            InitializeComponent();
+        }
+    }
+}
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Documents;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Navigation;
+using System.Windows.Shapes;
+
+namespace IntelloDeskClient.Views
+{
+    /// <summary>
+    /// Interaction logic for NowePrzyjecieView.xaml
+    /// </summary>
+    public partial class NowePrzyjecieView : UserControl
+    {
+        public NowePrzyjecieView()
+        {
+            InitializeComponent();
+        }
+    }
+}
+using System.Windows.Controls;
+
+namespace IntelloDeskClient.Views
+{
+    /// <summary>
+    /// Interaction logic for NowyKontrahentView.xaml
+    /// </summary>
+    public partial class NowyKontrahentView : UserControl
+    {
+        public NowyKontrahentView()
+        {
+            InitializeComponent();
+        }
+    }
+}
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Documents;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Navigation;
+using System.Windows.Shapes;
+
+namespace IntelloDeskClient.Views
+{
+    /// <summary>
+    /// Interaction logic for NowyTowarView.xaml
+    /// </summary>
+    public partial class NowyTowarView : UserControl
+    {
+        public NowyTowarView()
+        {
+            InitializeComponent();
+        }
+    }
+}
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Documents;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Navigation;
+using System.Windows.Shapes;
+
+namespace IntelloDeskClient.Views
+{
+    /// <summary>
+    /// Interaction logic for PozycjaView.xaml
+    /// </summary>
+    public partial class PozycjaView : UserControl
+    {
+        public PozycjaView()
+        {
+            InitializeComponent();
+        }
+    }
+}
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Documents;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Navigation;
+using System.Windows.Shapes;
+
+namespace IntelloDeskClient.Views
+{
+    /// <summary>
+    /// Interaction logic for StartView.xaml
+    /// </summary>
+    public partial class StartView : UserControl
+    {
+        public StartView()
+        {
+            InitializeComponent();
+        }
+    }
+}
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Documents;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Navigation;
+using System.Windows.Shapes;
+
+namespace IntelloDeskClient.Views
+{
+    /// <summary>
+    /// Interaction logic for TowaryListView.xaml
+    /// </summary>
+    public partial class TowaryListView : UserControl
+    {
+        public TowaryListView()
+        {
+            InitializeComponent();
+        }
+    }
+}
